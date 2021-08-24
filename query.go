@@ -79,6 +79,10 @@ type lookupWithFollowupResult struct {
 func (dht *IpfsDHT) runLookupWithFollowup(ctx context.Context, target string, queryFn queryFn, stopFn stopFn) (*lookupWithFollowupResult, error) {
 	// run the query
 	lookupRes, err := dht.runQuery(ctx, target, queryFn, stopFn)
+
+	//println("---query.go...runLookupWithFollowup---")
+	//println("lookupRes", lookupRes,"\n")
+
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +150,15 @@ processFollowUp:
 }
 
 func (dht *IpfsDHT) runQuery(ctx context.Context, target string, queryFn queryFn, stopFn stopFn) (*lookupWithFollowupResult, error) {
+
+	//println("---query.go...runQuery---")
+	//println("target: ", string(target))
+
 	// pick the K closest peers to the key in our Routing table.
 	targetKadID := kb.ConvertKey(target)
+	//println("targetKadID: ", targetKadID)
 	seedPeers := dht.routingTable.NearestPeers(targetKadID, dht.bucketSize)
+	//println("seedPeers: ", seedPeers,"\n")
 	if len(seedPeers) == 0 {
 		routing.PublishQueryEvent(ctx, &routing.QueryEvent{
 			Type:  routing.QueryError,
@@ -178,6 +188,9 @@ func (dht *IpfsDHT) runQuery(ctx context.Context, target string, queryFn queryFn
 	}
 
 	res := q.constructLookupResult(targetKadID)
+	//println("q: ", q)
+	//println("q.constructLookupResult(targetKadID): ", q.constructLookupResult(targetKadID))
+	//println("res: ", res,"\n")
 	return res, nil
 }
 
@@ -393,6 +406,7 @@ func (q *query) queryPeer(ctx context.Context, ch chan<- *queryUpdate, p peer.ID
 	defer q.waitGroup.Done()
 	dialCtx, queryCtx := ctx, ctx
 
+	startQuery := time.Now()
 	// dial the peer
 	if err := q.dht.dialPeer(dialCtx, p); err != nil {
 		// remove the peer if there was a dial failure..but not because of a context cancellation
@@ -403,7 +417,6 @@ func (q *query) queryPeer(ctx context.Context, ch chan<- *queryUpdate, p peer.ID
 		return
 	}
 
-	startQuery := time.Now()
 	// send query RPC to the remote peer
 	newPeers, err := q.queryFn(queryCtx, p)
 	if err != nil {

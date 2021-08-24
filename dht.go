@@ -126,10 +126,10 @@ type IpfsDHT struct {
 
 	autoRefresh bool
 
-	// A function returning a set of bootstrap peers to fallback on if all other attempts to fix
+	// A set of bootstrap peers to fallback on if all other attempts to fix
 	// the routing table fail (or, e.g., this is the first time this node is
 	// connecting to the network).
-	bootstrapPeers func() []peer.AddrInfo
+	bootstrapPeers []peer.AddrInfo
 
 	maxRecordAge time.Duration
 
@@ -165,6 +165,9 @@ var (
 // If the Routing Table has more than "minRTRefreshThreshold" peers, we consider a peer as a Routing Table candidate ONLY when
 // we successfully get a query response from it OR if it send us a query.
 func New(ctx context.Context, h host.Host, options ...Option) (*IpfsDHT, error) {
+
+	//println("---dht.go...New---")
+
 	var cfg dhtcfg.Config
 	if err := cfg.Apply(append([]Option{dhtcfg.Defaults}, options...)...); err != nil {
 		return nil, err
@@ -191,7 +194,7 @@ func New(ctx context.Context, h host.Host, options ...Option) (*IpfsDHT, error) 
 
 	dht.Validator = cfg.Validator
 	dht.msgSender = net.NewMessageSenderImpl(h, dht.protocols)
-	dht.protoMessenger, err = pb.NewProtocolMessenger(dht.msgSender)
+	dht.protoMessenger, err = pb.NewProtocolMessenger(dht.msgSender, pb.WithValidator(dht.Validator))
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +241,7 @@ func New(ctx context.Context, h host.Host, options ...Option) (*IpfsDHT, error) 
 
 	dht.proc.Go(dht.populatePeers)
 
+	//println("dht: ",dht)
 	return dht, nil
 }
 
@@ -245,10 +249,17 @@ func New(ctx context.Context, h host.Host, options ...Option) (*IpfsDHT, error) 
 // IpfsDHT's initialized with this function will respond to DHT requests,
 // whereas IpfsDHT's initialized with NewDHTClient will not.
 func NewDHT(ctx context.Context, h host.Host, dstore ds.Batching) *IpfsDHT {
+
+	//println("---dht.go...NewDHT---")
+	//println("ctx: ",ctx)
+	//println("h host: ",h)
+
+
 	dht, err := New(ctx, h, Datastore(dstore))
 	if err != nil {
 		panic(err)
 	}
+	//println("dht: ",dht)
 	return dht
 }
 
@@ -256,6 +267,11 @@ func NewDHT(ctx context.Context, h host.Host, dstore ds.Batching) *IpfsDHT {
 // host. IpfsDHT clients initialized with this function will not respond to DHT
 // requests. If you need a peer to respond to DHT requests, use NewDHT instead.
 func NewDHTClient(ctx context.Context, h host.Host, dstore ds.Batching) *IpfsDHT {
+
+	//println("---dht.go...NewDHTClient---")
+	//println("ctx: ",ctx)
+	//println("h host: ",h)
+
 	dht, err := New(ctx, h, Datastore(dstore), Mode(ModeClient))
 	if err != nil {
 		panic(err)
@@ -264,6 +280,9 @@ func NewDHTClient(ctx context.Context, h host.Host, dstore ds.Batching) *IpfsDHT
 }
 
 func makeDHT(ctx context.Context, h host.Host, cfg dhtcfg.Config) (*IpfsDHT, error) {
+
+	//println("---dht.go...makeDHT---")
+
 	var protocols, serverProtocols []protocol.ID
 
 	v1proto := cfg.ProtocolPrefix + kad1
@@ -346,6 +365,7 @@ func makeDHT(ctx context.Context, h host.Host, cfg dhtcfg.Config) (*IpfsDHT, err
 
 	dht.rtFreezeTimeout = rtFreezeTimeout
 
+	//println("dht: ",dht)
 	return dht, nil
 }
 
@@ -373,6 +393,9 @@ func makeRtRefreshManager(dht *IpfsDHT, cfg dhtcfg.Config, maxLastSuccessfulOutb
 }
 
 func makeRoutingTable(dht *IpfsDHT, cfg dhtcfg.Config, maxLastSuccessfulOutboundThreshold time.Duration) (*kb.RoutingTable, error) {
+
+	//println("---dht.go...makeRoutingTable---")
+
 	// make a Routing Table Diversity Filter
 	var filter *peerdiversity.Filter
 	if dht.rtPeerDiversityFilter != nil {
@@ -473,16 +496,15 @@ func (dht *IpfsDHT) fixLowPeers(ctx context.Context) {
 	// We should first use non-bootstrap peers we knew of from previous
 	// snapshots of the Routing Table before we connect to the bootstrappers.
 	// See https://github.com/libp2p/go-libp2p-kad-dht/issues/387.
-	if dht.routingTable.Size() == 0 && dht.bootstrapPeers != nil {
-		bootstrapPeers := dht.bootstrapPeers()
-		if len(bootstrapPeers) == 0 {
+	if dht.routingTable.Size() == 0 {
+		if len(dht.bootstrapPeers) == 0 {
 			// No point in continuing, we have no peers!
 			return
 		}
 
 		found := 0
-		for _, i := range rand.Perm(len(bootstrapPeers)) {
-			ai := bootstrapPeers[i]
+		for _, i := range rand.Perm(len(dht.bootstrapPeers)) {
+			ai := dht.bootstrapPeers[i]
 			err := dht.Host().Connect(ctx, ai)
 			if err == nil {
 				found++
@@ -540,7 +562,12 @@ func (dht *IpfsDHT) persistRTPeersInPeerStore() {
 // returns nil, nil when either nothing is found or the value found doesn't properly validate.
 // returns nil, some_error when there's a *datastore* error (i.e., something goes very wrong)
 func (dht *IpfsDHT) getLocal(key string) (*recpb.Record, error) {
+
+	fmt.Print("---dht.go...getLocal---\n")
+
 	logger.Debugw("finding value in datastore", "key", internal.LoggableRecordKeyString(key))
+	fmt.Print("finding value in datastore ", " key ", internal.LoggableRecordKeyString(key))
+	fmt.Print("\n")
 
 	rec, err := dht.getRecordFromDatastore(mkDsKey(key))
 	if err != nil {
@@ -554,7 +581,9 @@ func (dht *IpfsDHT) getLocal(key string) (*recpb.Record, error) {
 		return nil, nil
 
 	}
+	fmt.Print("rec: ",rec)
 	return rec, nil
+
 }
 
 // putLocal stores the key value pair in the datastore
@@ -626,6 +655,8 @@ func (dht *IpfsDHT) rtPeerLoop(proc goprocess.Process) {
 // If we connect to a peer we already have in the RT but do not exchange a query (rare)
 //    Do Nothing.
 func (dht *IpfsDHT) peerFound(ctx context.Context, p peer.ID, queryPeer bool) {
+
+
 	if c := baseLogger.Check(zap.DebugLevel, "peer found"); c != nil {
 		c.Write(zap.String("peer", p.String()))
 	}
@@ -777,6 +808,10 @@ func (dht *IpfsDHT) Process() goprocess.Process {
 
 // RoutingTable returns the DHT's routingTable.
 func (dht *IpfsDHT) RoutingTable() *kb.RoutingTable {
+
+	//println("---dht.go...RoutingTable---")
+	//println(dht.routingTable)
+
 	return dht.routingTable
 }
 
