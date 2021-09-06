@@ -394,8 +394,6 @@ func makeRtRefreshManager(dht *IpfsDHT, cfg dhtcfg.Config, maxLastSuccessfulOutb
 
 func makeRoutingTable(dht *IpfsDHT, cfg dhtcfg.Config, maxLastSuccessfulOutboundThreshold time.Duration) (*kb.RoutingTable, error) {
 
-	//println("---dht.go...makeRoutingTable---")
-
 	// make a Routing Table Diversity Filter
 	var filter *peerdiversity.Filter
 	if dht.rtPeerDiversityFilter != nil {
@@ -566,22 +564,25 @@ func (dht *IpfsDHT) getLocal(key string) (*recpb.Record, error) {
 	fmt.Print("---dht.go...getLocal---\n")
 
 	logger.Debugw("finding value in datastore", "key", internal.LoggableRecordKeyString(key))
-	fmt.Print("finding value in datastore ", " key ", internal.LoggableRecordKeyString(key))
-	fmt.Print("\n")
+	fmt.Print("finding value in datastore (DHT)","\n")
+	fmt.Print("internal.LoggableRecordKeyString(key): ",internal.LoggableRecordKeyString(key),"\n")
 
 	rec, err := dht.getRecordFromDatastore(mkDsKey(key))
 	if err != nil {
 		logger.Warnw("get local failed", "key", internal.LoggableRecordKeyString(key), "error", err)
+		fmt.Print("get local failed", "key", internal.LoggableRecordKeyString(key), "error", err,"\n")
 		return nil, err
 	}
 
 	// Double check the key. Can't hurt.
 	if rec != nil && string(rec.GetKey()) != key {
 		logger.Errorw("BUG: found a DHT record that didn't match it's key", "expected", internal.LoggableRecordKeyString(key), "got", rec.GetKey())
+		fmt.Print("BUG: found a DHT record that didn't match it's key", "expected", internal.LoggableRecordKeyString(key), "got", rec.GetKey(),"\n")
 		return nil, nil
 
 	}
-	fmt.Print("rec: ",rec)
+
+	fmt.Print("rec: ",rec,"\n")
 	return rec, nil
 
 }
@@ -656,17 +657,21 @@ func (dht *IpfsDHT) rtPeerLoop(proc goprocess.Process) {
 //    Do Nothing.
 func (dht *IpfsDHT) peerFound(ctx context.Context, p peer.ID, queryPeer bool) {
 
+	//fmt.Print("---dht.go...peerFound---\n")
 
 	if c := baseLogger.Check(zap.DebugLevel, "peer found"); c != nil {
 		c.Write(zap.String("peer", p.String()))
+		fmt.Print("peer in peerFound: ",p,"\n")
 	}
 	b, err := dht.validRTPeer(p)
 	if err != nil {
 		logger.Errorw("failed to validate if peer is a DHT peer", "peer", p, "error", err)
+		fmt.Print("failed to validate if peer is a DHT peer", "peer", p, "error", err,"\n")
 	} else if b {
 		select {
 		case dht.addPeerToRTChan <- addPeerRTReq{p, queryPeer}:
 		case <-dht.ctx.Done():
+			fmt.Print("p: ",p,"\n","queryPeer: ",queryPeer)
 			return
 		}
 	}
@@ -808,10 +813,6 @@ func (dht *IpfsDHT) Process() goprocess.Process {
 
 // RoutingTable returns the DHT's routingTable.
 func (dht *IpfsDHT) RoutingTable() *kb.RoutingTable {
-
-	//println("---dht.go...RoutingTable---")
-	//println(dht.routingTable)
-
 	return dht.routingTable
 }
 
