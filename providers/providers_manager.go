@@ -87,6 +87,7 @@ type getProv struct {
 
 // NewProviderManager constructor
 func NewProviderManager(ctx context.Context, local peer.ID, dstore ds.Batching, opts ...Option) (*ProviderManager, error) {
+
 	pm := new(ProviderManager)
 	pm.getprovs = make(chan *getProv)
 	pm.newprovs = make(chan *addProv)
@@ -102,6 +103,7 @@ func NewProviderManager(ctx context.Context, local peer.ID, dstore ds.Batching, 
 	}
 	pm.proc = goprocessctx.WithContext(ctx)
 	pm.proc.Go(pm.run)
+
 	return pm, nil
 }
 
@@ -215,6 +217,7 @@ func (pm *ProviderManager) run(proc goprocess.Process) {
 
 // AddProvider adds a provider
 func (pm *ProviderManager) AddProvider(ctx context.Context, k []byte, val peer.ID) {
+
 	prov := &addProv{
 		key: k,
 		val: val,
@@ -227,6 +230,7 @@ func (pm *ProviderManager) AddProvider(ctx context.Context, k []byte, val peer.I
 
 // addProv updates the cache if needed
 func (pm *ProviderManager) addProv(k []byte, p peer.ID) error {
+
 	now := time.Now()
 	if provs, ok := pm.cache.Get(string(k)); ok {
 		provs.(*providerSet).setVal(p, now)
@@ -256,6 +260,10 @@ func mkProvKey(k []byte) string {
 // GetProviders returns the set of providers for the given key.
 // This method _does not_ copy the set. Do not modify it.
 func (pm *ProviderManager) GetProviders(ctx context.Context, k []byte) []peer.ID {
+
+	fmt.Print("---providers_manager.go...GetProviders---\n")
+	fmt.Print("returns the set of providers for the given key\n")
+
 	gp := &getProv{
 		key:  k,
 		resp: make(chan []peer.ID, 1), // buffered to prevent sender from blocking
@@ -269,11 +277,13 @@ func (pm *ProviderManager) GetProviders(ctx context.Context, k []byte) []peer.ID
 	case <-ctx.Done():
 		return nil
 	case peers := <-gp.resp:
+		fmt.Print("GetProviders peers:",peers,"\n")
 		return peers
 	}
 }
 
 func (pm *ProviderManager) getProvidersForKey(k []byte) ([]peer.ID, error) {
+
 	pset, err := pm.getProviderSetForKey(k)
 	if err != nil {
 		return nil, err
@@ -283,6 +293,7 @@ func (pm *ProviderManager) getProvidersForKey(k []byte) ([]peer.ID, error) {
 
 // returns the ProviderSet if it already exists on cache, otherwise loads it from datasatore
 func (pm *ProviderManager) getProviderSetForKey(k []byte) (*providerSet, error) {
+
 	cached, ok := pm.cache.Get(string(k))
 	if ok {
 		return cached.(*providerSet), nil
@@ -302,6 +313,7 @@ func (pm *ProviderManager) getProviderSetForKey(k []byte) (*providerSet, error) 
 
 // loads the ProviderSet out of the datastore
 func loadProviderSet(dstore ds.Datastore, k []byte) (*providerSet, error) {
+
 	res, err := dstore.Query(dsq.Query{Prefix: mkProvKey(k)})
 	if err != nil {
 		return nil, err
